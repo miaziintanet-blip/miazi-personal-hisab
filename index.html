@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#087f6e">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Miazi Personal হিসাব</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Noto Sans Bengali",sans-serif;color:#18312d;background:#f3f7f6}
+*{box-sizing:border-box}body{margin:0}header{background:#087f6e;color:white;padding:18px 16px}
+header h1{font-size:21px;margin:0 0 4px}header p{margin:0;font-size:13px;opacity:.9}
+main{max-width:760px;margin:auto;padding:14px}.card{background:white;border:1px solid #dce9e5;border-radius:15px;padding:15px;margin:12px 0;box-shadow:0 2px 8px #1231}
+h2{font-size:17px;margin:0 0 12px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:#eaf5f1;border-radius:12px;padding:12px}.stat small{display:block;color:#55716a;font-size:12px}.stat strong{font-size:18px;display:block;margin-top:5px;overflow-wrap:anywhere}
+label{display:block;font-size:13px;margin:10px 0 5px;color:#405b55}input,select,button{font:inherit;width:100%;padding:11px;border-radius:10px;border:1px solid #cbdad5;background:white}
+button{background:#087f6e;color:white;border:0;font-weight:650;margin-top:10px;cursor:pointer}button.secondary{background:#e5f1ed;color:#075b4f}button.danger{background:#a53b3b}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.muted{color:#668079;font-size:12px}.status{font-size:13px;padding:8px 10px;border-radius:9px;background:#eef4f2;margin-top:9px}
+.entry{display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid #edf1ef}.entry:last-child{border:0}.entry b{display:block}.income{color:#087f46}.expense{color:#b23d3d}.entry small{color:#668079}
+.hidden{display:none!important}.actions{display:flex;gap:8px}.actions button{flex:1}.note{font-size:12px;line-height:1.5;color:#61756f}
+@media(max-width:420px){.grid{gap:5px}.stat{padding:9px}.stat strong{font-size:15px}.row{grid-template-columns:1fr}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<header><h1>মিয়াজী Personal হিসাব</h1><p>Income · Expense · Offline + Online Auto Sync</p></header>
+<main>
+<section class="card">
+<h2>অ্যাকাউন্ট / Account</h2>
+<div id="authArea">
+<label>Email</label><input id="email" type="email" autocomplete="email" placeholder="আপনার ইমেইল">
+<label>Password</label><input id="password" type="password" autocomplete="current-password" placeholder="কমপক্ষে ৬ অক্ষর">
+<div class="row"><button id="signup">নতুন অ্যাকাউন্ট</button><button id="login" class="secondary">লগইন</button></div>
+<p class="note">প্রথমবার নতুন অ্যাকাউন্ট তৈরি করুন। ইমেইল কনফার্মেশন চালু থাকলে Supabase থেকে আসা ইমেইল নিশ্চিত করুন।</p>
+</div>
+<div id="userArea" class="hidden">
+<div id="userEmail" class="muted"></div><button id="logout" class="secondary">লগআউট</button>
+</div>
+<div id="syncStatus" class="status">শুধু এই ডিভাইসে সংরক্ষণ হবে। অনলাইনে লগইন করলে Sync হবে।</div>
+</section>
+
+<section class="card">
+<h2>হিসাবের সারাংশ / Summary</h2>
+<div class="grid">
+<div class="stat"><small>মোট আয় / Income</small><strong id="totalIncome">৳০</strong></div>
+<div class="stat"><small>মোট ব্যয় / Expense</small><strong id="totalExpense">৳০</strong></div>
+<div class="stat"><small>ব্যালেন্স / Balance</small><strong id="balance">৳০</strong></div>
+</div>
+</section>
+
+<section class="card">
+<h2>নতুন হিসাব যোগ করুন / Add Entry</h2>
+<div class="row">
+<div><label>ধরন / Type</label><select id="type"><option value="income">আয় / Income</option><option value="expense">ব্যয় / Expense</option></select></div>
+<div><label>টাকার পরিমাণ / Amount</label><input id="amount" type="number" min="0.01" step="0.01" placeholder="যেমন 500"></div>
+</div>
+<div class="row">
+<div><label>খাত / Category</label><input id="category" placeholder="বেতন, খাবার, ভাড়া"></div>
+<div><label>তারিখ / Date</label><input id="entryDate" type="date"></div>
+</div>
+<label>বিবরণ / Note (ঐচ্ছিক)</label><input id="note" maxlength="250" placeholder="বিস্তারিত লিখুন">
+<button id="addEntry">হিসাব সংরক্ষণ করুন / Save Entry</button>
+</section>
+
+<section class="card">
+<h2>হিসাবের তালিকা / Transactions</h2>
+<div class="row">
+<div><label>ফিল্টার</label><select id="filter"><option value="all">সব / All</option><option value="income">শুধু আয়</option><option value="expense">শুধু ব্যয়</option></select></div>
+<div><label>মাস</label><input id="monthFilter" type="month"></div>
+</div>
+<div id="entries"></div>
+<div class="actions"><button id="export" class="secondary">Backup Export</button><button id="importBtn" class="secondary">Backup Import</button></div>
+<input id="importFile" type="file" accept="application/json" class="hidden">
+<p class="note">Offline-এ তথ্য এই ডিভাইসে থাকে। অন্য ডিভাইসে পেতে একই অ্যাকাউন্টে লগইন করে Sync করুন। নিয়মিত Backup রাখুন।</p>
+</section>
+</main>
+<script>
+const SUPABASE_URL = "https://hpcrvxqklgjegrchfdhh.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_W569WNu_F0F3_PQnrmW-Dg_62-ASQ36";
+const TABLE = "personal_entries";
+const STORAGE_KEY = "miazi_personal_entries_v1";
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+let entries = [];
+let currentUser = null;
+const $ = id => document.getElementById(id);
+const today = new Date().toISOString().slice(0,10);
+$("entryDate").value = today;
+
+function readLocal(){try{entries=JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]")}catch{entries=[]}}
+function writeLocal(){localStorage.setItem(STORAGE_KEY,JSON.stringify(entries));render()}
+function money(n){return "৳"+Number(n||0).toLocaleString("bn-BD",{maximumFractionDigits:2})}
+function setStatus(msg){$("syncStatus").textContent=msg}
+function render(){
+ const inc=entries.filter(x=>x.type==="income").reduce((s,x)=>s+Number(x.amount),0);
+ const exp=entries.filter(x=>x.type==="expense").reduce((s,x)=>s+Number(x.amount),0);
+ $("totalIncome").textContent=money(inc);$("totalExpense").textContent=money(exp);$("balance").textContent=money(inc-exp);
+ const f=$("filter").value,m=$("monthFilter").value;
+ const list=entries.filter(x=>(f==="all"||x.type===f)&&(!m||String(x.entry_date).startsWith(m))).sort((a,b)=>(b.entry_date||"").localeCompare(a.entry_date||"")||(b.created_at||"").localeCompare(a.created_at||""));
+ $("entries").innerHTML=list.length?list.map(x=>`<div class="entry"><div><b>${escapeHtml(x.category|| (x.type==="income"?"আয়":"ব্যয়"))}</b><small>${escapeHtml(x.entry_date||"")} · ${escapeHtml(x.note||"")}</small></div><b class="${x.type==="income"?"income":"expense"}">${x.type==="income"?"+":"−"}${money(x.amount)}</b></div>`).join(""):'<p class="muted">এখনো কোনো হিসাব নেই।</p>';
+}
+function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+async function syncNow(){
+ if(!navigator.onLine){setStatus("Offline: হিসাব ডিভাইসে সংরক্ষিত আছে।");return}
+ if(!currentUser){setStatus("অনলাইন Sync করতে লগইন করুন।");return}
+ try{
+  const payload=entries.map(x=>({...x,user_id:currentUser.id}));
+  if(payload.length){
+   const {error}=await db.from(TABLE).upsert(payload,{onConflict:"id"});
+   if(error) throw error;
+  }
+  const {data,error}=await db.from(TABLE).select("*").order("entry_date",{ascending:false});
+  if(error) throw error;
+  const byId=new Map(entries.map(x=>[x.id,x]));
+  for(const row of (data||[])) byId.set(row.id,row);
+  entries=Array.from(byId.values());
+  writeLocal();setStatus("Sync সম্পন্ন হয়েছে ✓ · "+new Date().toLocaleTimeString());
+ }catch(e){setStatus("Sync হয়নি: "+(e.message||"নেটওয়ার্ক/Database সমস্যা")+" · লোকাল তথ্য নিরাপদে আছে।")}
+}
+async function refreshAuth(){
+ const {data}=await db.auth.getSession();currentUser=data.session?.user||null;
+ $("authArea").classList.toggle("hidden",!!currentUser);$("userArea").classList.toggle("hidden",!currentUser);
+ $("userEmail").textContent=currentUser?.email||"";
+ if(currentUser) await syncNow(); else setStatus("লগইন করা নেই: Offline হিসাব চালু আছে।");
+}
+$("signup").onclick=async()=>{const email=$("email").value.trim(),password=$("password").value;if(!email||password.length<6)return alert("সঠিক Email এবং কমপক্ষে ৬ অক্ষরের Password দিন।");const {error}=await db.auth.signUp({email,password});alert(error?error.message:"অ্যাকাউন্ট তৈরি হয়েছে। ইমেইল নিশ্চিত করতে হতে পারে।");await refreshAuth()};
+$("login").onclick=async()=>{const {error}=await db.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});if(error)alert(error.message);else await refreshAuth()};
+$("logout").onclick=async()=>{await db.auth.signOut();currentUser=null;await refreshAuth()};
+$("addEntry").onclick=()=>{
+ const amount=Number($("amount").value);if(!(amount>0))return alert("সঠিক টাকার পরিমাণ লিখুন।");
+ const item={id:crypto.randomUUID(),user_id:currentUser?.id||null,type:$("type").value,amount,category:$("category").value.trim(),note:$("note").value.trim(),entry_date:$("entryDate").value||today,created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+ entries.push(item);writeLocal();$("amount").value="";$("note").value="";setStatus("ডিভাইসে সংরক্ষিত হয়েছে।");syncNow();
+};
+$("filter").onchange=render;$("monthFilter").onchange=render;
+$("export").onclick=()=>{const blob=new Blob([JSON.stringify(entries,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="miazi-personal-backup.json";a.click();URL.revokeObjectURL(a.href)};
+$("importBtn").onclick=()=>$("importFile").click();
+$("importFile").onchange=async e=>{const file=e.target.files[0];if(!file)return;try{const data=JSON.parse(await file.text());if(!Array.isArray(data))throw Error("Invalid backup");const map=new Map(entries.map(x=>[x.id,x]));data.forEach(x=>{if(x.id&&["income","expense"].includes(x.type)&&Number(x.amount)>0)map.set(x.id,x)});entries=[...map.values()];writeLocal();await syncNow();alert("Backup import সম্পন্ন হয়েছে।")}catch(err){alert("Backup ফাইল সঠিক নয়।")}e.target.value=""};
+window.addEventListener("online",syncNow);window.addEventListener("offline",()=>setStatus("Offline: লোকাল হিসাব চালু আছে।"));
+if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+readLocal();render();refreshAuth();
+</script>
+</body></html>
